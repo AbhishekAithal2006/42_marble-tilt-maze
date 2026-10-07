@@ -1,3 +1,7 @@
+from array import array
+import math
+import sys
+
 import pygame
 from .marble import Marble
 from .wall import Wall
@@ -37,6 +41,51 @@ class GameEngine:
         self.result = None  # "solved" or "timeout"
         self.finish_time_ms = None
         self.exit_requested = False
+        self.sounds = self._create_sounds()
+
+    @staticmethod
+    def _make_tone(notes):
+        """Build a short PCM sound from (frequency, duration) note pairs."""
+        mixer_format = pygame.mixer.get_init()
+        if mixer_format is None:
+            return None
+        sample_rate, sample_size, channels = mixer_format
+        if sample_size != -16:
+            return None
+
+        samples = array("h")
+        for frequency, duration in notes:
+            count = int(sample_rate * duration)
+            for i in range(count):
+                # Brief fade-in/out avoids clicks at the start and end of notes.
+                envelope = min(1.0, i / 180, (count - i - 1) / 500)
+                sample = int(10000 * max(0, envelope) * math.sin(2 * math.pi * frequency * i / sample_rate))
+                for _ in range(channels):
+                    samples.append(sample)
+
+        if sys.byteorder != "little":
+            samples.byteswap()
+        return pygame.mixer.Sound(buffer=samples.tobytes())
+
+    @classmethod
+    def _create_sounds(cls):
+        """Initialize the mixer when available and create the three game cues."""
+        try:
+            if pygame.mixer.get_init() is None:
+                pygame.mixer.init(frequency=22050, size=-16, channels=1)
+            return {
+                "bounce": cls._make_tone([(280, 0.07)]),
+                "goal": cls._make_tone([(523, 0.11), (659, 0.11), (784, 0.18)]),
+                "timeout": cls._make_tone([(587, 0.14), (440, 0.14), (294, 0.24)]),
+            }
+        except (pygame.error, ValueError):
+            # Audio is optional; gameplay remains available without a device.
+            return {"bounce": None, "goal": None, "timeout": None}
+
+    def _play_sound(self, name):
+        sound = self.sounds.get(name)
+        if sound is not None:
+            sound.play()
 
     def _build_maze(self):
         walls = []
@@ -104,6 +153,7 @@ class GameEngine:
         if elapsed >= self.time_limit_ms:
             self.game_over = True
             self.result = "timeout"
+            self._play_sound("timeout")
             return
 
         self.marble.vx *= (1 - self.friction)
@@ -118,7 +168,8 @@ class GameEngine:
         self.marble.x += self.marble.vx
         self.marble.y += self.marble.vy
 
-        self._resolve_wall_collisions()
+        if self._resolve_wall_collisions():
+            self._play_sound("bounce")
 
         gx = self.goal_x - self.marble.x
         gy = self.goal_y - self.marble.y
@@ -126,8 +177,10 @@ class GameEngine:
             self.game_over = True
             self.result = "solved"
             self.finish_time_ms = elapsed
+            self._play_sound("goal")
 
     def _resolve_wall_collisions(self):
+        bounced = False
         for wall in self.walls:
             wall_rect = wall.rect()
             # Clamp the circle center to the rectangle. The distance to
@@ -171,6 +224,9 @@ class GameEngine:
                 restitution = 0.3
                 self.marble.vx -= (1 + restitution) * normal_speed * nx
                 self.marble.vy -= (1 + restitution) * normal_speed * ny
+                bounced = True
+
+        return bounced
 
     def render(self, screen):
         screen.fill(DARK)
