@@ -29,6 +29,7 @@ class GameEngine:
         self.game_over = False
         self.result = None  # "solved" or "timeout"
         self.finish_time_ms = None
+        self.exit_requested = False
 
     def _build_maze(self):
         walls = []
@@ -48,9 +49,8 @@ class GameEngine:
         return walls
 
     def handle_event(self, event):
-        # This game is driven entirely by the continuous mouse
-        # position, handled in handle_input each frame.
-        pass
+        if self.game_over and event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+            self.exit_requested = True
 
     def handle_input(self):
         if self.game_over:
@@ -155,10 +155,38 @@ class GameEngine:
         timer_text = self.font.render(f"Time: {seconds_left}s", True, WHITE)
         screen.blit(timer_text, (10, 10))
 
-        if self.game_over and not getattr(self, "_game_over_logged", False):
-            # NOTE: no proper end screen yet - see Task 2 in the README.
+        if self.game_over:
+            # Dim the playfield and present the result in the game window.
+            overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 185))
+            screen.blit(overlay, (0, 0))
+
+            panel_width = min(440, self.width - 40)
+            panel_height = 190
+            panel = pygame.Rect(
+                (self.width - panel_width) // 2,
+                (self.height - panel_height) // 2,
+                panel_width,
+                panel_height,
+            )
+            pygame.draw.rect(screen, (32, 36, 48), panel, border_radius=12)
+            pygame.draw.rect(screen, (110, 120, 145), panel, width=2, border_radius=12)
+
+            title_font = pygame.font.SysFont("Arial", 34, bold=True)
+            detail_font = pygame.font.SysFont("Arial", 23)
+            prompt_font = pygame.font.SysFont("Arial", 18)
             if self.result == "solved":
-                print(f"Solved! Finished in {self.finish_time_ms / 1000:.1f}s")
+                title = "Maze Solved!"
+                detail = f"Finish time: {self.finish_time_ms / 1000:.1f} seconds"
+                title_color = GOAL_COLOR
             else:
-                print("Time's up! Maze not solved.")
-            self._game_over_logged = True
+                title = "Time's Up!"
+                detail = "The maze was not solved in time."
+                title_color = (245, 145, 120)
+
+            title_surface = title_font.render(title, True, title_color)
+            detail_surface = detail_font.render(detail, True, WHITE)
+            prompt_surface = prompt_font.render("Press any key or click to exit", True, (190, 195, 210))
+            screen.blit(title_surface, title_surface.get_rect(center=(self.width // 2, panel.y + 48)))
+            screen.blit(detail_surface, detail_surface.get_rect(center=(self.width // 2, panel.y + 98)))
+            screen.blit(prompt_surface, prompt_surface.get_rect(center=(self.width // 2, panel.y + 150)))

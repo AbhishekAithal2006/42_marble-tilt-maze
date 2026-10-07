@@ -24,6 +24,9 @@ def main():
                 running = False
             engine.handle_event(event)
 
+        if engine.exit_requested:
+            running = False
+
         engine.handle_input()
         engine.update()
         engine.render(SCREEN)
