@@ -10,13 +10,20 @@ WALL_COLOR = (90, 90, 110)
 GOAL_COLOR = (60, 200, 120)
 
 class GameEngine:
+    DIFFICULTIES = {
+        "Easy": {"tilt_strength": 0.45, "friction": 0.05, "time_limit_ms": 60000},
+        "Medium": {"tilt_strength": 0.6, "friction": 0.02, "time_limit_ms": 45000},
+        "Hard": {"tilt_strength": 0.8, "friction": 0.01, "time_limit_ms": 30000},
+    }
+
     def __init__(self, width, height):
         self.width = width
         self.height = height
 
         self.marble = Marble(50, 50)
-        self.tilt_strength = 0.6
-        self.friction = 0.02
+        self.difficulty = "Medium"
+        self.tilt_strength = self.DIFFICULTIES[self.difficulty]["tilt_strength"]
+        self.friction = self.DIFFICULTIES[self.difficulty]["friction"]
         self.max_speed = 9
 
         self.walls = self._build_maze()
@@ -49,8 +56,32 @@ class GameEngine:
         return walls
 
     def handle_event(self, event):
-        if self.game_over and event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+        if not self.game_over or event.type != pygame.KEYDOWN:
+            return
+
+        key_to_difficulty = {
+            pygame.K_1: "Easy",
+            pygame.K_2: "Medium",
+            pygame.K_3: "Hard",
+        }
+        if event.key in key_to_difficulty:
+            self.start_new_game(key_to_difficulty[event.key])
+        elif event.key in (pygame.K_ESCAPE, pygame.K_q):
             self.exit_requested = True
+
+    def start_new_game(self, difficulty):
+        """Reset the round and apply the selected difficulty settings."""
+        settings = self.DIFFICULTIES[difficulty]
+        self.difficulty = difficulty
+        self.tilt_strength = settings["tilt_strength"]
+        self.friction = settings["friction"]
+        self.time_limit_ms = settings["time_limit_ms"]
+        self.marble.x, self.marble.y = 50, 50
+        self.marble.vx = self.marble.vy = 0
+        self.start_ticks = pygame.time.get_ticks()
+        self.game_over = False
+        self.result = None
+        self.finish_time_ms = None
 
     def handle_input(self):
         if self.game_over:
@@ -162,7 +193,7 @@ class GameEngine:
             screen.blit(overlay, (0, 0))
 
             panel_width = min(440, self.width - 40)
-            panel_height = 190
+            panel_height = 240
             panel = pygame.Rect(
                 (self.width - panel_width) // 2,
                 (self.height - panel_height) // 2,
@@ -186,7 +217,11 @@ class GameEngine:
 
             title_surface = title_font.render(title, True, title_color)
             detail_surface = detail_font.render(detail, True, WHITE)
-            prompt_surface = prompt_font.render("Press any key or click to exit", True, (190, 195, 210))
+            prompt_surface = prompt_font.render("Choose a difficulty to play again", True, (190, 195, 210))
+            choices_surface = prompt_font.render("1  Easy     2  Medium     3  Hard", True, WHITE)
+            exit_surface = prompt_font.render("Esc or Q  Exit", True, (190, 195, 210))
             screen.blit(title_surface, title_surface.get_rect(center=(self.width // 2, panel.y + 48)))
             screen.blit(detail_surface, detail_surface.get_rect(center=(self.width // 2, panel.y + 98)))
-            screen.blit(prompt_surface, prompt_surface.get_rect(center=(self.width // 2, panel.y + 150)))
+            screen.blit(prompt_surface, prompt_surface.get_rect(center=(self.width // 2, panel.y + 145)))
+            screen.blit(choices_surface, choices_surface.get_rect(center=(self.width // 2, panel.y + 178)))
+            screen.blit(exit_surface, exit_surface.get_rect(center=(self.width // 2, panel.y + 210)))
